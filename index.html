@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>拼豆图纸生成器 · MARD</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --border: #dddddd;
+      --accent: #333333;
+      --bg-soft: #f7f7f7;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 12px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #fafafa;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 22px;
+      text-align: center;
+    }
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #ffffff;
+      padding: 8px 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    .panel-title {
+      font-weight: 600;
+      margin-right: 8px;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    label {
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    input[type="number"] {
+      width: 70px;
+      padding: 2px 4px;
+      font-size: 13px;
+    }
+    input[type="file"] {
+      font-size: 12px;
+    }
+    input[type="range"] {
+      vertical-align: middle;
+    }
+    button {
+      font-size: 13px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      border: 1px solid #999;
+      background: #f2f2f2;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button:hover {
+      background: #e5e5e5;
+    }
+    button.primary {
+      background: #1a73e8;
+      border-color: #1a73e8;
+      color: #ffffff;
+    }
+    button.primary:hover {
+      background: #1558b4;
+    }
+
+    #paletteStatus {
+      font-size: 12px;
+      color: #0a0;
+    }
+
+    /* 调整区 */
+    .hue-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .hue-btn {
+      font-size: 12px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid #aaa;
+      background: #f5f5f5;
+    }
+    .hue-btn.active {
+      background: #111827;
+      color: #ffffff;
+      border-color: #111827;
+    }
+    .slider-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+      flex-wrap: nowrap;
+      white-space: nowrap;
+    }
+
+    /* 主区域：图纸 + 颜色统计 */
+    .main {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .pattern-wrapper {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #ffffff;
+      padding: 6px;
+      min-height: 200px;
+      overflow: auto;
+    }
+    #pattern {
+      display: grid;
+      gap: 1px;
+      background: #ccc;
+      padding: 4px;
+      width: max-content;
+      max-width: 100%;
+    }
+    .cell {
+      width: 14px;
+      height: 14px;
+    }
+
+    .stats-wrapper {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #ffffff;
+      padding: 6px 8px;
+      min-height: 80px;
+      font-size: 12px;
+    }
+    #palette {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 300px;
+      overflow: auto;
+    }
+    .palette-summary {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .palette-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .swatch {
+      width: 16px;
+      height: 16px;
+      border: 1px solid #999;
+    }
+
+    .export-panel {
+      justify-content: center;
+      gap: 16px;
+    }
+
+    /* 响应式布局 */
+    @media (min-width: 900px) {
+      .main {
+        flex-direction: row;
+      }
+      .pattern-wrapper {
+        flex: 3;
+      }
+      .stats-wrapper {
+        flex: 1;
+        max-width: 260px;
+      }
+      #palette {
+        max-height: 420px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>拼豆图纸生成器 · MARD</h1>
+    </header>
+
+    <!-- 基础区：载入色表和图片 -->
+    <section class="panel">
+      <span class="panel-title">基础区：</span>
+      <label>加载MARD色表：
+        <input type="file" id="paletteLoader" accept=".csv" />
+      </label>
+      <span id="paletteStatus">未加载</span>
+      <label>选择图片：
+        <input type="file" id="imageLoader" accept="image/*" />
+      </label>
+    </section>
+
+    <!-- 选择区：拼豆数量 & 颜色丰富度 & 生成 -->
+    <section class="panel">
+      <span class="panel-title">选择区：</span>
+      <label>
+        横向拼豆数：
+        <input type="number" id="colsInput" value="40" min="5" max="200" />
+      </label>
+      <label>
+        颜色丰富度：
+        <input type="range" id="simplifyRange" min="0" max="100" value="100" />
+        <span id="simplifyLabel" style="font-size:12px;color:#555;">颜色更丰富</span>
+      </label>
+      <button id="convertBtn" class="primary">生成图纸</button>
+    </section>
+
+    <!-- 调整区：统一色相 / 阴影增强 / 高光增强 -->
+    <section class="panel">
+      <span class="panel-title">调整区：</span>
+      <div class="slider-group" style="flex-wrap:wrap;">
+        <span>统一色相：</span>
+        <div class="hue-group" id="hueButtons">
+          <button type="button" class="hue-btn active" data-hue="none">无</button>
+          <button type="button" class="hue-btn" data-hue="red">红</button>
+          <button type="button" class="hue-btn" data-hue="orange">橙</button>
+          <button type="button" class="hue-btn" data-hue="yellow">黄</button>
+          <button type="button" class="hue-btn" data-hue="green">绿</button>
+          <button type="button" class="hue-btn" data-hue="cyan">青</button>
+          <button type="button" class="hue-btn" data-hue="blue">蓝</button>
+          <button type="button" class="hue-btn" data-hue="purple">紫</button>
+          <button type="button" class="hue-btn" data-hue="pink">粉</button>
+        </div>
+      </div>
+      <div class="slider-group">
+        <span>增强阴影：</span>
+        <input type="range" id="shadowRange" min="0" max="100" value="40" />
+      </div>
+      <div class="slider-group">
+        <span>增强高光：</span>
+        <input type="range" id="highlightRange" min="0" max="100" value="40" />
+      </div>
+    </section>
+
+    <!-- 主区域：图纸 + 颜色统计 -->
+    <section class="main">
+      <div class="pattern-wrapper">
+        <div id="pattern"></div>
+      </div>
+      <div class="stats-wrapper">
+        <div class="palette-summary" id="summaryText">颜色统计（MARD 色号）</div>
+        <div id="palette"></div>
+      </div>
+    </section>
+
+    <!-- 导出 -->
+    <section class="panel export-panel">
+      <button id="exportBtn" class="primary">导出 PNG 图纸</button>
+    </section>
+
+    <canvas id="workCanvas" style="display:none;"></canvas>
+  </div>
+
+  <script>
+    /********** 全局变量 **********/
+    let MARD_COLORS = [];
+    let MARD_BY_CODE = {};
+    let paletteLoaded = false;
+
+    const paletteLoader  = document.getElementById('paletteLoader');
+    const paletteStatus  = document.getElementById('paletteStatus');
+    const imageLoader    = document.getElementById('imageLoader');
+    const convertBtn     = document.getElementById('convertBtn');
+    const colsInput      = document.getElementById('colsInput');
+    const simplifyRange  = document.getElementById('simplifyRange');
+    const simplifyLabel  = document.getElementById('simplifyLabel');
+    const exportBtn      = document.getElementById('exportBtn');
+
+    const hueButtonsWrap = document.getElementById('hueButtons');
+    const shadowRange    = document.getElementById('shadowRange');
+    const highlightRange = document.getElementById('highlightRange');
+
+    const canvas     = document.getElementById('workCanvas');
+    const ctx        = canvas.getContext('2d');
+    const patternDiv = document.getElementById('pattern');
+    const paletteDiv = document.getElementById('palette');
+    const summaryText= document.getElementById('summaryText');
+
+    let currentHue = 'none';
+
+    let loadedImage = null;
+    let basePattern = [];
+    let rowsGlobal = 0;
+    let colsGlobal = 0;
+    let displayPattern = [];
+    let displayCounts  = {};
+    let usedCodesOrder = [];
+
+    let brightnessGrid = [];
+    let edgeStrengthGrid = [];
+
+    /********** 监听 **********/
+    paletteLoader.addEventListener('change', handlePaletteFile);
+    imageLoader.addEventListener('change', handleImage);
+    convertBtn.addEventListener('click', generatePattern);
+    exportBtn.addEventListener('click', exportPNG);
+    simplifyRange.addEventListener('input', () => {
+      updateSimplifyLabel();
+      recomputeDisplay();
+    });
+    shadowRange.addEventListener('input', recomputeDisplay);
+    highlightRange.addEventListener('input', recomputeDisplay);
+
+    hueButtonsWrap.addEventListener('click', (e) => {
+      const btn = e.target.closest('.hue-btn');
+      if (!btn) return;
+      const hue = btn.dataset.hue || 'none';
+      currentHue = hue;
+      Array.from(hueButtonsWrap.querySelectorAll('.hue-btn')).forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      recomputeDisplay();
+    });
+
+    updateSimplifyLabel();
+
+    /********** MARD 色表加载 **********/
+    function handlePaletteFile(e) {
+      const file = e.target.files[0];
+      if (!file) {
+        alert('没有选择 CSV 文件。');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        try {
+          loadMardPaletteFromText(ev.target.result);
+        } catch (err) {
+          console.error(err);
+          alert('解析 MARD 色表时出错。');
+        }
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    // 默认列顺序：0=色号 1=R 2=G 3=B 4=HEX(可无)
+    function loadMardPaletteFromText(text) {
+      const lines = text.trim().split(/\r?\n/);
+      if (lines.length <= 1) {
+        alert('MARD 色表文件内容为空。');
+        return;
+      }
+
+      MARD_COLORS = [];
+      MARD_BY_CODE = {};
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const parts = line.split(/[,;]/);
+        if (parts.length < 4) continue;
+
+        const code = parts[0].trim();
+        if (!code) continue;
+
+        const r = parseInt(parts[1].trim(), 10);
+        const g = parseInt(parts[2].trim(), 10);
+        const b = parseInt(parts[3].trim(), 10);
+        if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) continue;
+
+        let hex = '#';
+        if (parts.length >= 5 && parts[4].trim()) {
+          hex = parts[4].trim();
+          if (!hex.startsWith('#')) hex = '#' + hex;
+        } else {
+          hex = rgbToHex(r, g, b);
+        }
+
+        const item = { code, hex, r, g, b };
+        MARD_COLORS.push(item);
+        MARD_BY_CODE[code] = item;
+      }
+
+      if (!MARD_COLORS.length) {
+        alert('MARD 色表中没有有效数据，请检查 CSV。');
+        paletteLoaded = false;
+        paletteStatus.textContent = '加载失败';
+        paletteStatus.style.color = '#c00';
+        return;
+      }
+
+      paletteLoaded = true;
+      paletteStatus.textContent = `已加载：${MARD_COLORS.length} 色`;
+      paletteStatus.style.color = '#0a0';
+    }
+
+    function rgbToHex(r, g, b) {
+      const toHex = (v) => {
+        const h = v.toString(16);
+        return h.length === 1 ? "0" + h : h;
+      };
+      return "#" + toHex(r) + toHex(g) + toHex(b);
+    }
+
+    /********** 图片加载 **********/
+    function handleImage(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const img = new Image();
+        img.onload = function() {
+          loadedImage = img;
+          alert('图片已载入，可以设置参数后点击“生成图纸”。');
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    /********** 生成基础图纸 + 亮度 / 边缘 **********/
+    function generatePattern() {
+      if (!paletteLoaded || !MARD_COLORS.length) {
+        alert('请先加载 MARD 色表。');
+        return;
+      }
+      if (!loadedImage) {
+        alert('请先选择一张图片。');
+        return;
+      }
+
+      const cols = parseInt(colsInput.value, 10) || 40;
+      const aspect = loadedImage.height / loadedImage.width;
+      const rows = Math.max(1, Math.round(cols * aspect));
+
+      colsGlobal = cols;
+      rowsGlobal = rows;
+
+      canvas.width = cols;
+      canvas.height = rows;
+      ctx.clearRect(0, 0, cols, rows);
+      ctx.drawImage(loadedImage, 0, 0, cols, rows);
+      const imgData = ctx.getImageData(0, 0, cols, rows).data;
+
+      basePattern = [];
+      brightnessGrid = [];
+
+      for (let y = 0; y < rows; y++) {
+        const rowCodes = [];
+        const rowBright = [];
+        for (let x = 0; x < cols; x++) {
+          const i = (y * cols + x) * 4;
+          let r = imgData[i];
+          let g = imgData[i + 1];
+          let b = imgData[i + 2];
+          const a = imgData[i + 3];
+          if (a === 0) { r = g = b = 255; }
+          const nearest = findNearestMardColor(r, g, b);
+          rowCodes.push(nearest.code);
+
+          const L = (0.299 * nearest.r + 0.587 * nearest.g + 0.114 * nearest.b) / 255;
+          rowBright.push(L);
+        }
+        basePattern.push(rowCodes);
+        brightnessGrid.push(rowBright);
+      }
+
+      computeEdgeStrength();
+      recomputeDisplay();
+    }
+
+    /********** 计算边缘强度（自动描边） **********/
+    function computeEdgeStrength() {
+      const rows = rowsGlobal;
+      const cols = colsGlobal;
+      edgeStrengthGrid = [];
+
+      for (let y = 0; y < rows; y++) {
+        const row = [];
+        for (let x = 0; x < cols; x++) {
+          const L  = brightnessGrid[y][x];
+          const Lr = (x + 1 < cols) ? brightnessGrid[y][x + 1] : L;
+          const Ll = (x - 1 >= 0)   ? brightnessGrid[y][x - 1] : L;
+          const Lu = (y - 1 >= 0)   ? brightnessGrid[y - 1][x] : L;
+          const Ld = (y + 1 < rows) ? brightnessGrid[y + 1][x] : L;
+
+          const dx = Lr - Ll;
+          const dy = Ld - Lu;
+          let strength = Math.sqrt(dx*dx + dy*dy);
+          strength = Math.min(1, strength * 2);
+          row.push(strength);
+        }
+        edgeStrengthGrid.push(row);
+      }
+    }
+
+    /********** 重算显示图案（所有高级模式） **********/
+    function recomputeDisplay() {
+      if (!basePattern.length) return;
+
+      const rows = rowsGlobal;
+      const cols = colsGlobal;
+
+      const useSmart      = true;  // 默认开启智能配色
+      const useEdge       = true;  // 默认开启自动描边
+
+      const shadowStr     = parseInt(shadowRange.value, 10) / 100;
+      const highlightStr  = parseInt(highlightRange.value, 10) / 100;
+      const useShadow     = shadowStr > 0;
+      const useHighlight  = highlightStr > 0;
+
+      const useHue        = currentHue !== 'none';
+      let targetHueDeg    = 0;
+      if (useHue) {
+        switch (currentHue) {
+          case 'red':    targetHueDeg = 0;   break;
+          case 'orange': targetHueDeg = 30;  break;
+          case 'yellow': targetHueDeg = 55;  break;
+          case 'green':  targetHueDeg = 120; break;
+          case 'cyan':   targetHueDeg = 180; break;
+          case 'blue':   targetHueDeg = 220; break;
+          case 'purple': targetHueDeg = 285; break;
+          case 'pink':   targetHueDeg = 320; break;
+          default:       targetHueDeg = 0;   break;
+        }
+      }
+      const hueStrength = useHue ? 0.6 : 0;
+
+      const prePattern = [];
+
+      for (let y = 0; y < rows; y++) {
+        const row = [];
+        for (let x = 0; x < cols; x++) {
+          const code = basePattern[y][x];
+          const info = MARD_BY_CODE[code] || MARD_COLORS[0];
+          let r = info.r;
+          let g = info.g;
+          let b = info.b;
+
+          let { h, s, v } = rgbToHsv(r, g, b);
+
+          // 1) 统一色相
+          if (useHue) {
+            let hRad = h / 360;
+            let tRad = targetHueDeg / 360;
+            let diff = ((tRad - hRad + 1.5) % 1) - 0.5;
+            hRad = hRad + diff * hueStrength;
+            hRad = (hRad % 1 + 1) % 1;
+            h = hRad * 360;
+          }
+
+          // 2) 智能配色（像素风）
+          if (useSmart) {
+            v = 0.5 + (v - 0.5) * 1.2;
+            if (v < 0) v = 0;
+            if (v > 1) v = 1;
+            s = Math.min(1, s * 1.1);
+          }
+
+          // 3) 阴影增强（偏暗）
+          if (useShadow && v < 0.6) {
+            const darkFactor = 0.3 * shadowStr;
+            const satBoost   = 0.3 * shadowStr;
+            v = v * (1 - darkFactor);
+            if (v < 0) v = 0;
+            s = s + (1 - s) * satBoost;
+            if (s > 1) s = 1;
+          }
+
+          // 4) 高光增强（偏亮）
+          if (useHighlight && v > 0.6) {
+            const lightBoost = 0.4 * highlightStr;
+            const satBoost   = 0.2 * highlightStr;
+            v = v + (1 - v) * lightBoost;
+            if (v > 1) v = 1;
+            s = s + (1 - s) * satBoost;
+            if (s > 1) s = 1;
+          }
+
+          // 5) 自动描边：根据亮度变化加深
+          if (useEdge && edgeStrengthGrid.length === rows && edgeStrengthGrid[0].length === cols) {
+            const e = edgeStrengthGrid[y][x];
+            const edgeThreshold = 0.35;
+            if (e > edgeThreshold) {
+              const edgeIntensity = (e - edgeThreshold) / (1 - edgeThreshold);
+              const extraDark = 0.4 * edgeIntensity;
+              v = v * (1 - extraDark);
+              if (v < 0) v = 0;
+            }
+          }
+
+          const rgb = hsvToRgb(h, s, v);
+          const nearest = findNearestMardColor(rgb.r, rgb.g, rgb.b);
+          row.push(nearest.code);
+        }
+        prePattern.push(row);
+      }
+
+      // 6) 颜色丰富度合并
+      const originalCounts = {};
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const code = prePattern[y][x];
+          originalCounts[code] = (originalCounts[code] || 0) + 1;
+        }
+      }
+      const allCodes = Object.keys(originalCounts);
+      const uniqueCount = allCodes.length;
+      if (!uniqueCount) return;
+
+      const t = parseInt(simplifyRange.value, 10) / 100;
+      const minColors = Math.max(3, Math.round(uniqueCount * 0.3));
+      const maxColors = uniqueCount;
+      const keepCount = Math.round(minColors + t * (maxColors - minColors));
+
+      const sortedCodes = allCodes.sort((a, b) => originalCounts[b] - originalCounts[a]);
+      const keptCodes = new Set(sortedCodes.slice(0, keepCount));
+
+      const mapToDisplayCode = {};
+      for (const code of allCodes) {
+        if (keptCodes.has(code)) {
+          mapToDisplayCode[code] = code;
+        } else {
+          mapToDisplayCode[code] = findNearestCodeAmong(code, keptCodes);
+        }
+      }
+
+      displayPattern = [];
+      displayCounts = {};
+      for (let y = 0; y < rows; y++) {
+        const row = [];
+        for (let x = 0; x < cols; x++) {
+          const srcCode = prePattern[y][x];
+          const dispCode = mapToDisplayCode[srcCode];
+          row.push(dispCode);
+          displayCounts[dispCode] = (displayCounts[dispCode] || 0) + 1;
+        }
+        displayPattern.push(row);
+      }
+
+      usedCodesOrder = Object.keys(displayCounts).sort(compareCodes);
+
+      renderPattern();
+      renderPalette();
+    }
+
+    function renderPattern() {
+      patternDiv.innerHTML = '';
+      if (!colsGlobal || !rowsGlobal) return;
+      patternDiv.style.gridTemplateColumns = `repeat(${colsGlobal}, 14px)`;
+
+      for (let y = 0; y < rowsGlobal; y++) {
+        for (let x = 0; x < colsGlobal; x++) {
+          const code = displayPattern[y][x];
+          const color = MARD_BY_CODE[code];
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.style.backgroundColor = color ? color.hex : '#ffffff';
+          patternDiv.appendChild(cell);
+        }
+      }
+    }
+
+    function renderPalette() {
+      paletteDiv.innerHTML = '';
+      if (!usedCodesOrder.length) {
+        summaryText.textContent = '颜色统计（MARD 色号）';
+        return;
+      }
+
+      const totalColors = usedCodesOrder.length;
+      summaryText.textContent = `颜色统计（共 ${totalColors} 种）`;
+
+      usedCodesOrder.forEach(code => {
+        const info = MARD_BY_CODE[code];
+        if (!info) return;
+        const item = document.createElement('div');
+        item.className = 'palette-item';
+
+        const swatch = document.createElement('div');
+        swatch.className = 'swatch';
+        swatch.style.backgroundColor = info.hex;
+
+        const text = document.createElement('span');
+        text.textContent = `${info.code} ×${displayCounts[code]}`;
+
+        item.appendChild(swatch);
+        item.appendChild(text);
+        paletteDiv.appendChild(item);
+      });
+    }
+
+    /********** 导出 PNG **********/
+    function exportPNG() {
+      if (!displayPattern.length) {
+        alert('请先生成图纸。');
+        return;
+      }
+
+      const cellSize = 20;
+      const gridW = colsGlobal * cellSize;
+      const gridH = rowsGlobal * cellSize;
+
+      const bottomPadding = 50;
+      const legendCellWidth = 120;
+      const legendCellHeight = 70;
+
+      const maxLegendCols = Math.max(1, Math.floor(gridW / legendCellWidth));
+      const legendRows = Math.ceil(usedCodesOrder.length / maxLegendCols);
+      const legendHeight = legendRows * legendCellHeight + bottomPadding;
+
+      const totalWidth = gridW + 40;
+      const totalHeight = gridH + legendHeight + 40;
+
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = totalWidth;
+      exportCanvas.height = totalHeight;
+      const ectx = exportCanvas.getContext('2d');
+
+      ectx.fillStyle = '#ffffff';
+      ectx.fillRect(0, 0, totalWidth, totalHeight);
+
+      const offsetX = 20;
+      const offsetY = 20;
+
+      // 填色
+      for (let y = 0; y < rowsGlobal; y++) {
+        for (let x = 0; x < colsGlobal; x++) {
+          const code = displayPattern[y][x];
+          const c = MARD_BY_CODE[code];
+          ectx.fillStyle = c ? c.hex : '#ffffff';
+          ectx.fillRect(offsetX + x * cellSize, offsetY + y * cellSize, cellSize, cellSize);
+        }
+      }
+
+      // 1×1 网格
+      ectx.strokeStyle = '#dddddd';
+      ectx.lineWidth = 0.5;
+      for (let c = 0; c <= colsGlobal; c++) {
+        const x = offsetX + c * cellSize;
+        ectx.beginPath();
+        ectx.moveTo(x, offsetY);
+        ectx.lineTo(x, offsetY + gridH);
+        ectx.stroke();
+      }
+      for (let r = 0; r <= rowsGlobal; r++) {
+        const y = offsetY + r * cellSize;
+        ectx.beginPath();
+        ectx.moveTo(offsetX, y);
+        ectx.lineTo(offsetX + gridW, y);
+        ectx.stroke();
+      }
+
+      // 5×5 红虚线
+      ectx.strokeStyle = '#ff4d4d';
+      ectx.lineWidth = 1;
+      ectx.setLineDash([6, 4]);
+      for (let c = 0; c <= colsGlobal; c += 5) {
+        const x = offsetX + c * cellSize;
+        ectx.beginPath();
+        ectx.moveTo(x, offsetY);
+        ectx.lineTo(x, offsetY + gridH);
+        ectx.stroke();
+      }
+      for (let r = 0; r <= rowsGlobal; r += 5) {
+        const y = offsetY + r * cellSize;
+        ectx.beginPath();
+        ectx.moveTo(offsetX, y);
+        ectx.lineTo(offsetX + gridW, y);
+        ectx.stroke();
+      }
+
+      // 10×10 红实线
+      ectx.setLineDash([]);
+      ectx.strokeStyle = '#b00000';
+      ectx.lineWidth = 1.5;
+      for (let c = 0; c <= colsGlobal; c += 10) {
+        const x = offsetX + c * cellSize;
+        ectx.beginPath();
+        ectx.moveTo(x, offsetY);
+        ectx.lineTo(x, offsetY + gridH);
+        ectx.stroke();
+      }
+      for (let r = 0; r <= rowsGlobal; r += 10) {
+        const y = offsetY + r * cellSize;
+        ectx.beginPath();
+        ectx.moveTo(offsetX, y);
+        ectx.lineTo(offsetX + gridW, y);
+        ectx.stroke();
+      }
+
+      // 外框
+      ectx.strokeStyle = '#333333';
+      ectx.lineWidth = 1;
+      ectx.strokeRect(offsetX, offsetY, gridW, gridH);
+
+      // 图例
+      const legendStartY = offsetY + gridH + 30;
+      ectx.fillStyle = '#000000';
+      ectx.font = '14px system-ui';
+      ectx.fillText(`使用颜色（共 ${usedCodesOrder.length} 种）：`, offsetX, legendStartY);
+
+      ectx.font = '12px system-ui';
+
+      usedCodesOrder.forEach((code, idx) => {
+        const info = MARD_BY_CODE[code];
+        if (!info) return;
+        const colIndex = idx % maxLegendCols;
+        const rowIndex = Math.floor(idx / maxLegendCols);
+
+        const baseX = offsetX + colIndex * legendCellWidth;
+        const baseY = legendStartY + 20 + rowIndex * legendCellHeight;
+
+        ectx.fillStyle = info.hex;
+        ectx.fillRect(baseX, baseY, 24, 24);
+        ectx.strokeStyle = '#333333';
+        ectx.lineWidth = 1;
+        ectx.strokeRect(baseX, baseY, 24, 24);
+
+        ectx.fillStyle = '#000000';
+        ectx.fillText(info.code, baseX, baseY + 24 + 14);
+        ectx.fillText(`数量：${displayCounts[code]}`, baseX, baseY + 24 + 14 + 14);
+      });
+
+      const url = exportCanvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'beads_pattern_mard.png';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    /********** 工具函数 **********/
+    function updateSimplifyLabel() {
+      const v = parseInt(simplifyRange.value, 10);
+      if (v < 34) {
+        simplifyLabel.textContent = '颜色较少';
+      } else if (v < 67) {
+        simplifyLabel.textContent = '适中';
+      } else {
+        simplifyLabel.textContent = '颜色更丰富';
+      }
+    }
+
+    function findNearestMardColor(r, g, b) {
+      let best = null;
+      let bestDist = Infinity;
+      for (const c of MARD_COLORS) {
+        const dr = c.r - r;
+        const dg = c.g - g;
+        const db = c.b - b;
+        const d = dr * dr + dg * dg + db * db;
+        if (d < bestDist) {
+          bestDist = d;
+          best = c;
+        }
+      }
+      if (!best) best = MARD_COLORS[0];
+      return best;
+    }
+
+    // 色号排序：字母 A-Z，数字从高到低
+    function compareCodes(a, b) {
+      const re = /^([A-Za-z]*)(\d*)$/;
+      const ma = a.match(re);
+      const mb = b.match(re);
+
+      if (ma && mb) {
+        const la = ma[1] || "";
+        const lb = mb[1] || "";
+        if (la !== lb) {
+          return la.localeCompare(lb, 'zh-CN');
+        }
+        const na = ma[2] ? parseInt(ma[2], 10) : NaN;
+        const nb = mb[2] ? parseInt(mb[2], 10) : NaN;
+        if (!Number.isNaN(na) && !Number.isNaN(nb)) {
+          return nb - na;
+        }
+      }
+      return a.localeCompare(b, 'zh-CN');
+    }
+
+    function findNearestCodeAmong(code, keptSet) {
+      const src = MARD_BY_CODE[code] || MARD_COLORS[0];
+      let bestCode = null;
+      let bestDist = Infinity;
+      for (const kc of keptSet) {
+        const c = MARD_BY_CODE[kc];
+        if (!c) continue;
+        const dr = c.r - src.r;
+        const dg = c.g - src.g;
+        const db = c.b - src.b;
+        const d = dr * dr + dg * dg + db * db;
+        if (d < bestDist) {
+          bestDist = d;
+          bestCode = kc;
+        }
+      }
+      if (!bestCode) bestCode = [...keptSet][0];
+      return bestCode;
+    }
+
+    // RGB <-> HSV
+    function rgbToHsv(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h, s, v = max;
+      const d = max - min;
+      s = max === 0 ? 0 : d / max;
+
+      if (max === min) {
+        h = 0;
+      } else {
+        switch (max) {
+          case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+          case g: h = (b - r) / d + 2; break;
+          case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+      }
+      return { h: h * 360, s, v };
+    }
+
+    function hsvToRgb(h, s, v) {
+      h = ((h % 360) + 360) % 360;
+      const c = v * s;
+      const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+      const m = v - c;
+      let r1, g1, b1;
+
+      if (h < 60)      { r1 = c; g1 = x; b1 = 0; }
+      else if (h < 120){ r1 = x; g1 = c; b1 = 0; }
+      else if (h < 180){ r1 = 0; g1 = c; b1 = x; }
+      else if (h < 240){ r1 = 0; g1 = x; b1 = c; }
+      else if (h < 300){ r1 = x; g1 = 0; b1 = c; }
+      else             { r1 = c; g1 = 0; b1 = x; }
+
+      const r = Math.round((r1 + m) * 255);
+      const g = Math.round((g1 + m) * 255);
+      const b = Math.round((b1 + m) * 255);
+      return { r, g, b };
+    }
+  </script>
+</body>
+</html>
