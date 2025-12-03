@@ -89,7 +89,6 @@
       color: #0a0;
     }
 
-    /* 调整区 */
     .hue-group {
       display: flex;
       flex-wrap: wrap;
@@ -116,7 +115,6 @@
       white-space: nowrap;
     }
 
-    /* 主区域：图纸 + 颜色统计 */
     .main {
       display: flex;
       flex-direction: column;
@@ -178,7 +176,6 @@
       gap: 16px;
     }
 
-    /* 响应式布局 */
     @media (min-width: 900px) {
       .main {
         flex-direction: row;
@@ -208,13 +205,13 @@
       <label>加载MARD色表：
         <input type="file" id="paletteLoader" accept=".csv" />
       </label>
-      <span id="paletteStatus">未加载</span>
+      <span id="paletteStatus">正在尝试自动加载 mard_palette.csv …</span>
       <label>选择图片：
         <input type="file" id="imageLoader" accept="image/*" />
       </label>
     </section>
 
-    <!-- 选择区：拼豆数量 & 颜色丰富度 & 生成 -->
+    <!-- 选择区 -->
     <section class="panel">
       <span class="panel-title">选择区：</span>
       <label>
@@ -229,7 +226,7 @@
       <button id="convertBtn" class="primary">生成图纸</button>
     </section>
 
-    <!-- 调整区：统一色相 / 阴影增强 / 高光增强 -->
+    <!-- 调整区 -->
     <section class="panel">
       <span class="panel-title">调整区：</span>
       <div class="slider-group" style="flex-wrap:wrap;">
@@ -256,7 +253,7 @@
       </div>
     </section>
 
-    <!-- 主区域：图纸 + 颜色统计 -->
+    <!-- 主区域 -->
     <section class="main">
       <div class="pattern-wrapper">
         <div id="pattern"></div>
@@ -280,6 +277,7 @@
     let MARD_COLORS = [];
     let MARD_BY_CODE = {};
     let paletteLoaded = false;
+    let suppressPaletteAlert = false; // 自动加载时不弹窗
 
     const paletteLoader  = document.getElementById('paletteLoader');
     const paletteStatus  = document.getElementById('paletteStatus');
@@ -337,7 +335,34 @@
 
     updateSimplifyLabel();
 
-    /********** MARD 色表加载 **********/
+    /********** 页面加载时自动从同目录拉取 mard_palette.csv **********/
+    window.addEventListener('load', () => {
+      autoLoadPaletteFromServer();
+    });
+
+    async function autoLoadPaletteFromServer() {
+      try {
+        suppressPaletteAlert = true;
+        paletteStatus.textContent = '正在自动加载 mard_palette.csv …';
+        paletteStatus.style.color = '#555';
+
+        const resp = await fetch('mard_palette.csv', { cache: 'no-store' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const text = await resp.text();
+        loadMardPaletteFromText(text);
+
+        paletteStatus.textContent = `已自动加载：${MARD_COLORS.length} 色`;
+        paletteStatus.style.color = '#0a0';
+      } catch (e) {
+        console.error('自动加载色表失败：', e);
+        paletteStatus.textContent = '自动加载失败，可手动选择 CSV。';
+        paletteStatus.style.color = '#c00';
+      } finally {
+        suppressPaletteAlert = false;
+      }
+    }
+
+    /********** MARD 色表加载（手动上传） **********/
     function handlePaletteFile(e) {
       const file = e.target.files[0];
       if (!file) {
@@ -348,9 +373,13 @@
       reader.onload = function(ev) {
         try {
           loadMardPaletteFromText(ev.target.result);
+          paletteStatus.textContent = `已加载：${MARD_COLORS.length} 色（手动）`;
+          paletteStatus.style.color = '#0a0';
         } catch (err) {
           console.error(err);
           alert('解析 MARD 色表时出错。');
+          paletteStatus.textContent = '加载失败';
+          paletteStatus.style.color = '#c00';
         }
       };
       reader.readAsText(file, 'utf-8');
@@ -360,7 +389,7 @@
     function loadMardPaletteFromText(text) {
       const lines = text.trim().split(/\r?\n/);
       if (lines.length <= 1) {
-        alert('MARD 色表文件内容为空。');
+        if (!suppressPaletteAlert) alert('MARD 色表文件内容为空。');
         return;
       }
 
@@ -395,16 +424,12 @@
       }
 
       if (!MARD_COLORS.length) {
-        alert('MARD 色表中没有有效数据，请检查 CSV。');
+        if (!suppressPaletteAlert) alert('MARD 色表中没有有效数据，请检查 CSV。');
         paletteLoaded = false;
-        paletteStatus.textContent = '加载失败';
-        paletteStatus.style.color = '#c00';
         return;
       }
 
       paletteLoaded = true;
-      paletteStatus.textContent = `已加载：${MARD_COLORS.length} 色`;
-      paletteStatus.style.color = '#0a0';
     }
 
     function rgbToHex(r, g, b) {
@@ -434,7 +459,7 @@
     /********** 生成基础图纸 + 亮度 / 边缘 **********/
     function generatePattern() {
       if (!paletteLoaded || !MARD_COLORS.length) {
-        alert('请先加载 MARD 色表。');
+        alert('请先确保已成功加载 MARD 色表。');
         return;
       }
       if (!loadedImage) {
@@ -482,7 +507,7 @@
       recomputeDisplay();
     }
 
-    /********** 计算边缘强度（自动描边） **********/
+    /********** 计算边缘强度 **********/
     function computeEdgeStrength() {
       const rows = rowsGlobal;
       const cols = colsGlobal;
@@ -507,15 +532,15 @@
       }
     }
 
-    /********** 重算显示图案（所有高级模式） **********/
+    /********** 重算显示图案 **********/
     function recomputeDisplay() {
       if (!basePattern.length) return;
 
       const rows = rowsGlobal;
       const cols = colsGlobal;
 
-      const useSmart      = true;  // 默认开启智能配色
-      const useEdge       = true;  // 默认开启自动描边
+      const useSmart      = true;
+      const useEdge       = true;
 
       const shadowStr     = parseInt(shadowRange.value, 10) / 100;
       const highlightStr  = parseInt(highlightRange.value, 10) / 100;
@@ -552,7 +577,6 @@
 
           let { h, s, v } = rgbToHsv(r, g, b);
 
-          // 1) 统一色相
           if (useHue) {
             let hRad = h / 360;
             let tRad = targetHueDeg / 360;
@@ -562,7 +586,6 @@
             h = hRad * 360;
           }
 
-          // 2) 智能配色（像素风）
           if (useSmart) {
             v = 0.5 + (v - 0.5) * 1.2;
             if (v < 0) v = 0;
@@ -570,7 +593,6 @@
             s = Math.min(1, s * 1.1);
           }
 
-          // 3) 阴影增强（偏暗）
           if (useShadow && v < 0.6) {
             const darkFactor = 0.3 * shadowStr;
             const satBoost   = 0.3 * shadowStr;
@@ -580,7 +602,6 @@
             if (s > 1) s = 1;
           }
 
-          // 4) 高光增强（偏亮）
           if (useHighlight && v > 0.6) {
             const lightBoost = 0.4 * highlightStr;
             const satBoost   = 0.2 * highlightStr;
@@ -590,7 +611,6 @@
             if (s > 1) s = 1;
           }
 
-          // 5) 自动描边：根据亮度变化加深
           if (useEdge && edgeStrengthGrid.length === rows && edgeStrengthGrid[0].length === cols) {
             const e = edgeStrengthGrid[y][x];
             const edgeThreshold = 0.35;
@@ -609,7 +629,6 @@
         prePattern.push(row);
       }
 
-      // 6) 颜色丰富度合并
       const originalCounts = {};
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
@@ -634,7 +653,7 @@
         if (keptCodes.has(code)) {
           mapToDisplayCode[code] = code;
         } else {
-          mapToDisplayCode[code] = findNearestCodeAmong(code, keptCodes);
+          mapToDisplayCode[code] = findNearestCodeAmong(code, keptSet = keptCodes);
         }
       }
 
@@ -736,7 +755,6 @@
       const offsetX = 20;
       const offsetY = 20;
 
-      // 填色
       for (let y = 0; y < rowsGlobal; y++) {
         for (let x = 0; x < colsGlobal; x++) {
           const code = displayPattern[y][x];
@@ -746,7 +764,6 @@
         }
       }
 
-      // 1×1 网格
       ectx.strokeStyle = '#dddddd';
       ectx.lineWidth = 0.5;
       for (let c = 0; c <= colsGlobal; c++) {
@@ -764,7 +781,6 @@
         ectx.stroke();
       }
 
-      // 5×5 红虚线
       ectx.strokeStyle = '#ff4d4d';
       ectx.lineWidth = 1;
       ectx.setLineDash([6, 4]);
@@ -783,7 +799,6 @@
         ectx.stroke();
       }
 
-      // 10×10 红实线
       ectx.setLineDash([]);
       ectx.strokeStyle = '#b00000';
       ectx.lineWidth = 1.5;
@@ -802,12 +817,10 @@
         ectx.stroke();
       }
 
-      // 外框
       ectx.strokeStyle = '#333333';
       ectx.lineWidth = 1;
       ectx.strokeRect(offsetX, offsetY, gridW, gridH);
 
-      // 图例
       const legendStartY = offsetY + gridH + 30;
       ectx.fillStyle = '#000000';
       ectx.font = '14px system-ui';
@@ -873,7 +886,6 @@
       return best;
     }
 
-    // 色号排序：字母 A-Z，数字从高到低
     function compareCodes(a, b) {
       const re = /^([A-Za-z]*)(\d*)$/;
       const ma = a.match(re);
@@ -914,7 +926,6 @@
       return bestCode;
     }
 
-    // RGB <-> HSV
     function rgbToHsv(r, g, b) {
       r /= 255; g /= 255; b /= 255;
       const max = Math.max(r, g, b), min = Math.min(r, g, b);
